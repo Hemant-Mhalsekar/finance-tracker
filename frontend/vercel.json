@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://finance-tracker-h0zi.onrender.com/api/$1"
+    }
+  ]
+}
