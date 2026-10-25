@@ -11,18 +11,37 @@ main {
   padding: 0 1rem;
 }
 
-dl {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 0.5rem 1rem;
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
-dt {
+label {
   font-weight: 600;
 }
 
-dd {
-  margin: 0;
+input {
+  padding: 0.5rem;
+  font-size: 1rem;
+}
+
+button {
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+button.link {
+  border: none;
+  background: none;
+  color: #2563eb;
+  text-decoration: underline;
 }
 
 .error {
