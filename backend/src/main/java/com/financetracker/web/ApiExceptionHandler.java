@@ -1,5 +1,6 @@
 package com.financetracker.web;
 
+import java.sql.SQLException;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -37,10 +38,13 @@ public class ApiExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, "Malformed request body");
     }
 
-    // Not logged: the database error detail can contain the row being inserted (including the password hash).
+    // Logs only the exception class and SQLState: the message, SQL and parameters can contain
+    // emails and password hashes.
     @ExceptionHandler(DataIntegrityViolationException.class)
     ResponseEntity<ApiError> handleConflict(DataIntegrityViolationException ex) {
-        return build(HttpStatus.CONFLICT, "Unable to register with these details");
+        log.warn("Data integrity violation: exception={}, sqlState={}",
+                ex.getClass().getName(), findSqlState(ex));
+        return build(HttpStatus.CONFLICT, "Request conflicts with existing data");
     }
 
     @ExceptionHandler(Exception.class)
@@ -51,6 +55,16 @@ public class ApiExceptionHandler {
         }
         log.error("Unexpected error", ex);
         return build(HttpStatus.INTERNAL_SERVER_ERROR, "Something went wrong");
+    }
+
+    // Walks the cause chain for a java.sql.SQLException and returns its SQLState, or "unknown".
+    private static String findSqlState(Throwable ex) {
+        for (Throwable t = ex; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof SQLException sqlException) {
+                return sqlException.getSQLState() != null ? sqlException.getSQLState() : "unknown";
+            }
+        }
+        return "unknown";
     }
 
     private static ResponseEntity<ApiError> build(HttpStatusCode status, String message) {
