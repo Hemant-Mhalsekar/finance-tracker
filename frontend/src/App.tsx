@@ -1,97 +1,99 @@
 import { useEffect, useState } from 'react'
+import { getMe, logout, onLoggedOut, refreshSession, waitForServer } from './api'
+import AuthForm from './AuthForm'
 
-type Health = { status?: string; db: string; time?: string }
-type Phase = 'loading' | 'waking' | 'done' | 'failed'
-
-const RETRY_DELAY_MS = 5_000
-const REQUEST_TIMEOUT_MS = 15_000
-const MAX_TOTAL_MS = 90_000
+type Phase = 'waking' | 'serverError' | 'form' | 'loggedIn'
 
 export default function App() {
-  const [phase, setPhase] = useState<Phase>('loading')
-  const [health, setHealth] = useState<Health | null>(null)
-  // Incrementing this restarts the whole check cycle (used by the Retry button).
+  const [phase, setPhase] = useState<Phase>('waking')
+  const [email, setEmail] = useState('')
+  const [loggingOut, setLoggingOut] = useState(false)
+  // Incrementing this restarts the startup sequence (used by the Retry button).
   const [attempt, setAttempt] = useState(0)
 
+  // Startup: wait for the server, then try to restore the session once.
   useEffect(() => {
-    const startedAt = Date.now()
-    let stopped = false
-    let retryTimer: number | undefined
-    let requestTimer: number | undefined
-    let controller: AbortController | undefined
+    const controller = new AbortController()
 
-    async function check() {
-      controller = new AbortController()
-      requestTimer = window.setTimeout(() => controller?.abort(), REQUEST_TIMEOUT_MS)
-
-      try {
-        const res = await fetch('/api/health', { signal: controller.signal })
-        // A proxy error page (502/503/504) is not JSON, so this throws and we fall through to retry.
-        const body: unknown = await res.json()
-        if (typeof body === 'object' && body !== null && 'db' in body) {
-          // Real answer from the backend (even HTTP 503 with db "down"): show it, no retry.
-          if (!stopped) {
-            setHealth(body as Health)
-            setPhase('done')
-          }
-          return
-        }
-      } catch {
-        // Network error, timeout or non-JSON response: treat as "server waking up".
-      } finally {
-        window.clearTimeout(requestTimer)
-      }
-
-      if (stopped) return
-      if (Date.now() - startedAt + RETRY_DELAY_MS >= MAX_TOTAL_MS) {
-        setPhase('failed')
+    async function start() {
+      const serverUp = await waitForServer(controller.signal)
+      if (controller.signal.aborted) return
+      if (!serverUp) {
+        setPhase('serverError')
         return
       }
-      setPhase('waking')
-      retryTimer = window.setTimeout(check, RETRY_DELAY_MS)
+
+      if (await refreshSession()) {
+        try {
+          const me = await getMe()
+          if (controller.signal.aborted) return
+          setEmail(me.email)
+          setPhase('loggedIn')
+          return
+        } catch {
+          // Fall through to the login form.
+        }
+      }
+      if (!controller.signal.aborted) setPhase('form')
     }
 
-    check()
+    start()
 
-    // Cleanup: no timers or requests survive unmount or a restart.
-    return () => {
-      stopped = true
-      window.clearTimeout(retryTimer)
-      window.clearTimeout(requestTimer)
-      controller?.abort()
-    }
+    // Cleanup: stops the ping polling and its timers.
+    return () => controller.abort()
   }, [attempt])
 
+  // Return to the form if a session refresh ever fails.
+  useEffect(
+    () =>
+      onLoggedOut(() => {
+        setEmail('')
+        setPhase('form')
+      }),
+    [],
+  )
+
   function retry() {
-    setHealth(null)
-    setPhase('loading')
+    setPhase('waking')
     setAttempt((n) => n + 1)
+  }
+
+  async function loadUser() {
+    const me = await getMe()
+    setEmail(me.email)
+    setPhase('loggedIn')
+  }
+
+  async function handleLogout() {
+    setLoggingOut(true)
+    await logout()
+    setLoggingOut(false)
+    setEmail('')
+    setPhase('form')
   }
 
   return (
     <main>
       <h1>Finance Tracker</h1>
 
-      {phase === 'loading' && <p>Checking server...</p>}
-
       {phase === 'waking' && <p>Server is waking up. This can take up to a minute...</p>}
 
-      {phase === 'failed' && (
+      {phase === 'serverError' && (
         <>
           <p className="error">Could not reach the server. Please try again.</p>
           <button onClick={retry}>Retry</button>
         </>
       )}
 
-      {phase === 'done' && health && (
-        <dl>
-          <dt>Status</dt>
-          <dd>{health.status}</dd>
-          <dt>Database</dt>
-          <dd>{health.db}</dd>
-          <dt>Server time</dt>
-          <dd>{health.time}</dd>
-        </dl>
+      {phase === 'form' && <AuthForm onAuthenticated={loadUser} />}
+
+      {phase === 'loggedIn' && (
+        <>
+          <p>Logged in as {email}</p>
+          <button onClick={handleLogout} disabled={loggingOut}>
+            Log out
+          </button>
+        </>
       )}
     </main>
   )
