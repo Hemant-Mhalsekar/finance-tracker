@@ -3,6 +3,11 @@ spring:
     url: ${DB_URL}
     username: ${DB_USER}
     password: ${DB_PASSWORD}
+    # The database pooler allows only a small number of connections on the free plan.
+    # Can be overridden by environment variables, e.g. SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE.
+    hikari:
+      maximum-pool-size: 3
+      minimum-idle: 1
   jpa:
     hibernate:
       ddl-auto: validate

@@ -9,14 +9,16 @@ Spring Boot app (Maven, Java).
 
 ## Environment variables
 
-| Variable      | Description                                  |
-|---------------|----------------------------------------------|
-| `DB_URL`      | JDBC URL, e.g. `jdbc:postgresql://host:5432/dbname` |
-| `DB_USER`     | Database user                                |
-| `DB_PASSWORD` | Database password                            |
-| `PORT`        | Optional. HTTP port, defaults to `8080`      |
+| Name | Required | Where to set it | Notes |
+|------|----------|-----------------|-------|
+| `DB_URL` | Required | `backend/.env` locally, Render dashboard in production | JDBC URL of the Supabase session pooler (ends with `?sslmode=require`). |
+| `DB_USER` | Required | `backend/.env` locally, Render dashboard in production | The pooler username. |
+| `DB_PASSWORD` | Required | `backend/.env` locally, Render dashboard in production | Database password. |
+| `JWT_SECRET` | Required | `backend/.env` locally, Render dashboard in production | Random string of at least 32 bytes, different in each environment. |
+| `COOKIE_SECURE` | Optional | `backend/.env` locally, Render dashboard in production | Defaults to `true`. Set to `false` only for local development over http. |
+| `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE` | Optional | `backend/.env` locally, Render dashboard in production | Overrides the default pool size. |
 
-See `.env.example` for placeholders. Never commit real values.
+Set these in `backend/.env` locally (never commit it) and in the Render dashboard in production. Never put real values in the repository.
 
 ## Export variables in a macOS terminal (zsh)
 
