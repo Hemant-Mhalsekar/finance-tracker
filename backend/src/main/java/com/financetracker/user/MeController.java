@@ -12,7 +12,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 public class MeController {
 
-    public record MeResponse(UUID id, String email) {
+    public record MeResponse(UUID id, String email, Short payDay) {
     }
 
     private final UserRepository users;
@@ -26,6 +26,6 @@ public class MeController {
         UUID id = UUID.fromString(jwt.getSubject());
         User user = users.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unauthorized"));
-        return new MeResponse(user.getId(), user.getEmail());
+        return new MeResponse(user.getId(), user.getEmail(), user.getPayDay());
     }
 }
