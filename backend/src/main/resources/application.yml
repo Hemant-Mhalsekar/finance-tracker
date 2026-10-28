@@ -14,6 +14,9 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+  jackson:
+    deserialization:
+      accept-float-as-int: false
 
 server:
   port: ${PORT:8080}
