@@ -39,6 +39,15 @@ cd backend
 ./mvnw spring-boot:run
 ```
 
+## Running the tests
+
+The integration tests run against a real PostgreSQL container via Testcontainers, so Docker must be running.
+
+```sh
+cd backend
+./mvnw test
+```
+
 ## Endpoints
 
 - `GET /api/ping` returns `ok` (no database access).
