@@ -1,15 +1,121 @@
+:root {
+  --text: #1f2937;
+  --muted: #6b7280;
+  --bg: #f9fafb;
+  --surface: #ffffff;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-text: #ffffff;
+  --danger: #b91c1c;
+  --danger-bg: #fef2f2;
+  --success: #15803d;
+  --warn-bg: #fffbeb;
+  --warn-border: #f59e0b;
+  --bar-bg: #e5e7eb;
+  --radius: 8px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   font-family: system-ui, sans-serif;
-  color: #1f2937;
-  background: #f9fafb;
+  color: var(--text);
+  background: var(--bg);
 }
 
-main {
-  max-width: 480px;
-  margin: 4rem auto;
-  padding: 0 1rem;
+h1 {
+  font-size: 1.5rem;
+  margin: 0 0 0.5rem;
 }
+
+h2 {
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+}
+
+/* ---- layout ---- */
+
+main {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+main.narrow {
+  max-width: 480px;
+  margin-top: 3rem;
+}
+
+.narrow-section {
+  max-width: 480px;
+}
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  font-weight: 700;
+}
+
+.topbar nav {
+  display: flex;
+  gap: 0.25rem;
+  order: 3;
+  width: 100%;
+}
+
+.topbar nav a {
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.topbar nav a.active {
+  background: var(--bg);
+  font-weight: 600;
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.account .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 12rem;
+}
+
+/* On a phone the email crowds the header; the account is obvious from the data anyway. */
+@media (max-width: 480px) {
+  .account .muted {
+    display: none;
+  }
+}
+
+@media (min-width: 720px) {
+  .topbar nav {
+    order: 0;
+    width: auto;
+  }
+}
+
+/* ---- forms ---- */
 
 form {
   display: flex;
@@ -17,19 +123,56 @@ form {
   gap: 0.5rem;
 }
 
-label {
+label,
+legend {
   font-weight: 600;
 }
 
-input {
-  padding: 0.5rem;
+input,
+select {
+  padding: 0.6rem;
   font-size: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.amount-input {
+  font-size: 1.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+fieldset.type-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+}
+
+fieldset.type-picker label {
+  font-weight: 400;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 button {
-  padding: 0.5rem 1rem;
+  padding: 0.6rem 1rem;
   font-size: 1rem;
   cursor: pointer;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+button.secondary {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
 }
 
 button:disabled {
@@ -40,10 +183,153 @@ button:disabled {
 button.link {
   border: none;
   background: none;
-  color: #2563eb;
+  color: var(--accent);
   text-decoration: underline;
 }
 
-.error {
-  color: #b91c1c;
+.hint,
+.muted {
+  color: var(--muted);
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.error,
+.negative {
+  color: var(--danger);
+}
+
+.success {
+  color: var(--success);
+}
+
+.split-preview {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.split-preview dt {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.split-preview dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- dashboard ---- */
+
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.cycle-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.cycle-header p {
+  margin: 0;
+}
+
+.cycle-nav {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 720px) {
+  .cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.card p {
+  margin: 0.25rem 0;
+}
+
+.card.over {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.big {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.bar {
+  height: 8px;
+  margin: 0.5rem 0;
+  border-radius: 4px;
+  background: var(--bar-bg);
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.card.over .bar-fill {
+  background: var(--danger);
+}
+
+.warnings {
+  margin: 0;
+  padding: 0.75rem 1rem 0.75rem 2rem;
+  background: var(--warn-bg);
+  border-left: 4px solid var(--warn-border);
+  border-radius: var(--radius);
+}
+
+.category-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.category-table th,
+.category-table td {
+  padding: 0.5rem 0.25rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.category-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The expense count is noise on a phone; the amount matters most. */
+@media (max-width: 480px) {
+  .category-table .count {
+    display: none;
+  }
 }

@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react'
-import { getMe, logout, onLoggedOut, refreshSession, waitForServer } from './api'
+import { Navigate, Route, Routes } from 'react-router'
+import { getMe, logout, onLoggedOut, refreshSession, waitForServer, type Me } from './api'
+import AppShell from './AppShell'
 import AuthForm from './AuthForm'
+import AddExpense from './pages/AddExpense'
+import Dashboard from './pages/Dashboard'
+import Onboarding from './pages/Onboarding'
 
-type Phase = 'waking' | 'serverError' | 'form' | 'loggedIn'
+type Phase = 'waking' | 'serverError' | 'form' | 'ready'
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('waking')
-  const [email, setEmail] = useState('')
+  const [me, setMe] = useState<Me | null>(null)
   const [loggingOut, setLoggingOut] = useState(false)
   // Incrementing this restarts the startup sequence (used by the Retry button).
   const [attempt, setAttempt] = useState(0)
@@ -25,10 +30,10 @@ export default function App() {
 
       if (await refreshSession()) {
         try {
-          const me = await getMe()
+          const user = await getMe()
           if (controller.signal.aborted) return
-          setEmail(me.email)
-          setPhase('loggedIn')
+          setMe(user)
+          setPhase('ready')
           return
         } catch {
           // Fall through to the login form.
@@ -47,7 +52,7 @@ export default function App() {
   useEffect(
     () =>
       onLoggedOut(() => {
-        setEmail('')
+        setMe(null)
         setPhase('form')
       }),
     [],
@@ -59,42 +64,56 @@ export default function App() {
   }
 
   async function loadUser() {
-    const me = await getMe()
-    setEmail(me.email)
-    setPhase('loggedIn')
+    setMe(await getMe())
+    setPhase('ready')
   }
 
   async function handleLogout() {
     setLoggingOut(true)
     await logout()
     setLoggingOut(false)
-    setEmail('')
+    setMe(null)
     setPhase('form')
   }
 
+  if (phase !== 'ready' || !me) {
+    return (
+      <main className="narrow">
+        <h1>Finance Tracker</h1>
+
+        {phase === 'waking' && (
+          <p>Server is waking up. On the free hosting plan this can take up to 3 minutes...</p>
+        )}
+
+        {phase === 'serverError' && (
+          <>
+            <p className="error">Could not reach the server. Please try again.</p>
+            <button onClick={retry}>Retry</button>
+          </>
+        )}
+
+        {phase === 'form' && <AuthForm onAuthenticated={loadUser} />}
+      </main>
+    )
+  }
+
+  // Until onboarding is done, every URL shows the onboarding screen.
+  if (me.payDay === null) {
+    return (
+      <Routes>
+        <Route path="/onboarding" element={<Onboarding onDone={loadUser} />} />
+        <Route path="*" element={<Navigate to="/onboarding" replace />} />
+      </Routes>
+    )
+  }
+
   return (
-    <main>
-      <h1>Finance Tracker</h1>
-
-      {phase === 'waking' && <p>Server is waking up. This can take up to a minute...</p>}
-
-      {phase === 'serverError' && (
-        <>
-          <p className="error">Could not reach the server. Please try again.</p>
-          <button onClick={retry}>Retry</button>
-        </>
-      )}
-
-      {phase === 'form' && <AuthForm onAuthenticated={loadUser} />}
-
-      {phase === 'loggedIn' && (
-        <>
-          <p>Logged in as {email}</p>
-          <button onClick={handleLogout} disabled={loggingOut}>
-            Log out
-          </button>
-        </>
-      )}
-    </main>
+    <Routes>
+      <Route element={<AppShell email={me.email} onLogout={handleLogout} loggingOut={loggingOut} />}>
+        <Route index element={<Dashboard />} />
+        <Route path="add" element={<AddExpense />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   )
 }
