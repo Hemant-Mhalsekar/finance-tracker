@@ -1,30 +1,3 @@
-**Rebuilding `backend/.env`**
-
-The file had these lines. Three of the values are already in this chat.
-
-```
-DB_URL=jdbc:postgresql://aws-0-ap-south-1.pooler.supabase.com:5432/postgres?sslmode=require
-DB_USER=postgres.dsxmxteyqwsbqsucuuqv
-DB_PASSWORD='<your Supabase database password>'
-JWT_SECRET='<random string, at least 32 bytes>'
-COOKIE_SECURE=false
-```
-
-- `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE` is no longer needed locally, because `application.yml` now sets the pool size to 3.
-- You can copy the structure from the committed template: `cp backend/.env.example backend/.env`. Then fill in the real values.
-- **`DB_PASSWORD` has three recovery options, in this order:**
-  - Your password manager. I told you to save it there when you created the project.
-  - Render's Environment tab for your service. You set the same value there, and the dashboard normally lets the owner reveal it.
-  - Reset it in Supabase (Project Settings, Database). A reset breaks the live backend until you update `DB_PASSWORD` on Render and it redeploys, so do both in the same sitting.
-- **`JWT_SECRET`:** generate a new one with `openssl rand -base64 48`. It must differ from Render's anyway, so nothing is lost. The only effect is that old local tokens stop working.
-- Check the file is ignored by Git: `git check-ignore -v backend/.env` should print a rule.
-- **Tip for Claude Code:** don't let it read your `.env`. Load the variables in your terminal first (`cd backend && set -a; source .env; set +a`), then start Claude Code from that same terminal. It inherits them. The unit and integration tests don't need `.env` at all.
-
-**Context for Claude Code**
-
-Paste this as your first message. If you save it as `CLAUDE.md`, it contains no secrets, so it's safe in the public repo.
-
-```
 # Project context: Personal finance tracker (portfolio project, real users can sign up)
 
 ## What it is
@@ -79,7 +52,7 @@ Paste this as your first message. If you save it as `CLAUDE.md`, it contains no 
 
 ## Domain rules
 - Money: BIGINT paise everywhere (1 rupee = 100 paise). The API only accepts and returns whole paise. UI shows rupees with 2 decimals in Indian format; convert text to paise by string handling, never floats. Salary limits: 100 to 1,000,000,000 paise (Rs 1 to Rs 1 crore). Expense limit: up to 10,000,000,000 paise.
-- Pay cycle: runs from one pay date to the day before the next. If the pay day does not exist in a month (29-31), use the last day of that month. CycleCalculator: payDateInMonth, containing, startingOn, nextAfter. After a pay day change, the stored current cycle keeps its end; the next cycle can be shorter or longer (transition cycle, even 1 day).
+- Pay cycle: runs from one pay date to the day before the next. If the pay day does not exist in a month (29-31), use the last day of that month. CycleCalculator: payDateInMonth, containing, startingOn, nextAfter. Pay day change (decided 10 Nov 2026): the current cycle AND the next full cycle keep the old pay day; the new pay day takes effect only after that, so the transition cycle comes one cycle later (needs a pending pay day stored, so a new migration). The transition cycle itself can still be short or long (even 1 day).
 - STORED CYCLES BEAT THE FORMULA: always look dates up in the database first (findContaining); the formula is only used to create new cycles after the newest stored one.
 - Budget split (BudgetSplit): needs = floor(salary*50/100), wants = floor(salary*30/100), savings = remainder, so the three always equal the salary. Percentages are stored per cycle (fixed 50/30/20 for now).
 - Savings is derived: salary - needs spent - wants spent. "Invested" = sum of INVESTMENT expenses, a breakdown INSIDE savings, not subtracted from it. Unspent money counts as savings. Warn if logged spending exceeds salary. Overspend flags on needs and wants even when savings covers them. Negative savings is shown as a deficit, not zero.
@@ -92,7 +65,7 @@ Paste this as your first message. If you save it as `CLAUDE.md`, it contains no 
 - Public: GET /api/ping ("ok"), GET /api/health ({status, db, time}; 503 if DB down), POST /api/auth/register (201), /login (200), /refresh, /logout (204). Register/login/refresh return { accessToken } and set the refresh cookie.
 - Authenticated (Bearer access token): GET /api/me -> {id, email, payDay (null until onboarding)}; POST /api/onboarding {salaryPaise, payDay} -> 201 {payDay, cycle}; GET/POST /api/categories (?includeArchived), PATCH/DELETE /api/categories/{id}; POST /api/expenses, PUT/DELETE /api/expenses/{id}; GET /api/expenses ?from&to (ISO dates) &categoryId &page &size (default 20, max 100) -> {items, page, size, totalItems, totalPages}, sorted by date desc, createdAt desc, id desc.
 - CycleView = {periodStart, periodEnd, salaryPaise, needsPaise, wantsPaise, savingsPaise}. ExpenseView = {id, categoryId, type, amountPaise, expenseDate, description}. CategoryView = {id, name, type|null, archived}.
-- Specified on 31 Oct 2026, STATUS UNKNOWN (check git log and whether CycleService exists): GET /api/cycles/current (rolls forward: creates missing cycles up to today with INSERT ... ON CONFLICT DO NOTHING, copying salary and percentages, using the stored-cycles-first rule), PUT /api/cycles/current/salary (current cycle onward only), PUT /api/settings/pay-day (applies from the next cycle).
+- NOT BUILT YET (confirmed 10 Nov 2026: no CycleService, no settings package): GET /api/cycles/current (rolls forward: creates missing cycles up to today with INSERT ... ON CONFLICT DO NOTHING, copying salary and percentages, using the stored-cycles-first rule), PUT /api/cycles/current/salary (current cycle onward only), PUT /api/settings/pay-day (decided 10 Nov 2026: waits one FULL cycle, see Domain rules).
 
 ## Security decisions (keep them)
 - Access token: HS256 JWT, 15 minutes, subject = user UUID, signed with JWT_SECRET (startup fails if missing or under 32 bytes). Stateless sessions, CSRF disabled (bearer tokens), BCrypt passwords (min 8 chars, max 72 bytes), email trimmed and lowercased.
@@ -107,7 +80,7 @@ Paste this as your first message. If you save it as `CLAUDE.md`, it contains no 
 - Services hold the business rules and use @Transactional on every method that changes data (including derived deletes). Controllers read the user id from the JWT subject (@AuthenticationPrincipal Jwt).
 - Short comments that explain WHY, not what.
 
-## Tests (37 passing as of 30 Oct 2026, before the pending cycle work)
+## Tests (37 reported passing on 30 Oct 2026; the 9 integration tests live on the updates branch, commit 01ec401, not yet merged to main as of 10 Nov 2026)
 - Unit tests: CycleCalculatorTest (10, includes a property test over every pay day 1-31 for 4 years), BudgetSplitTest (3), DefaultCategoriesTest (1), JsonDeserializationTest (2, uses the real JSON config), CategoryServiceTest (6) and ExpenseServiceTest (6) with Mockito.
 - IntegrationTest (9 methods): real PostgreSQL 17 in a shared Testcontainers container, @SpringBootTest + MockMvc, covers auth, refresh rotation and reuse, onboarding races, cross-user isolation, composite FK, category and expense rules, cascade delete, and RLS-enabled on every table.
 - Run: cd backend && ./mvnw test (Docker Desktop must be running). Quick summary: ./mvnw test 2>&1 | grep -E "Tests run:|BUILD".
@@ -127,11 +100,5 @@ Paste this as your first message. If you save it as `CLAUDE.md`, it contains no 
 - Deferred: the "did your salary change?" prompt each cycle (needs a stored flag, so a new migration).
 - Before sharing the link: rate limiting on register/login (Bucket4j), cleanup job for expired refresh tokens, GitHub Actions CI (runners have Docker), a separate Supabase project for development, decide on cold-start fix (keep-alive ping, paid Render Starter about $7/month, or startup-time tuning), raise the frontend waiting limit above 140 s, Swagger/OpenAPI docs, account deletion, CSV export, README limitations (savings counts only logged expenses, no opening balance, no bonus income, India only, registration reveals emails).
 
-## First thing to do in this session
-- Run git log --oneline and ls backend/src/main/java/com/financetracker/cycle to see whether the cycle roll-forward work exists, run the tests, and report back before changing anything.
-```
-
-**After you paste it**
-
-- Ask Claude Code to confirm the state with `git log --oneline` and `./mvnw test`, and to tell you whether Prompt 20 was ever applied.
-- Tell me what it finds. I haven't seen any result since I gave you Prompt 20 on 31 October, so I don't know whether it was run.
+## First thing to do in a new session
+- Run git log --oneline and git status, run the tests, and report back before changing anything.
