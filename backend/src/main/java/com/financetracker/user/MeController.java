@@ -1,5 +1,6 @@
 package com.financetracker.user;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -12,7 +13,8 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 public class MeController {
 
-    public record MeResponse(UUID id, String email, Short payDay) {
+    // pendingPayDay and pendingPayDayFrom are null unless a pay day change is scheduled.
+    public record MeResponse(UUID id, String email, Short payDay, Short pendingPayDay, LocalDate pendingPayDayFrom) {
     }
 
     private final UserRepository users;
@@ -26,6 +28,7 @@ public class MeController {
         UUID id = UUID.fromString(jwt.getSubject());
         User user = users.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unauthorized"));
-        return new MeResponse(user.getId(), user.getEmail(), user.getPayDay());
+        return new MeResponse(user.getId(), user.getEmail(), user.getPayDay(),
+                user.getPendingPayDay(), user.getPendingPayDayFrom());
     }
 }

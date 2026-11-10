@@ -52,3 +52,6 @@ cd backend
 
 - `GET /api/ping` returns `ok` (no database access).
 - `GET /api/health` returns JSON with `status`, `db` and `time`. Returns HTTP 503 with `"db": "down"` if the database check fails.
+- `GET /api/cycles/current` returns the pay cycle containing today, creating any missing cycles first.
+- `PUT /api/cycles/current/salary` changes the salary of the current cycle (later cycles copy it).
+- `PUT /api/settings/pay-day` schedules a pay day change. It waits one full cycle: the current and next cycle keep the old pay day.
