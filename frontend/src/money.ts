@@ -40,3 +40,10 @@ export function splitBudget(salaryPaise: number): { needs: number; wants: number
   const wants = Math.floor((salaryPaise * 30) / 100)
   return { needs, wants, savings: salaryPaise - needs - wants }
 }
+
+/** Paise as plain editable text without grouping: 120050 -> "1200.50", 50000 -> "500". */
+export function paiseToInput(paise: number): string {
+  const rupees = Math.trunc(paise / 100)
+  const fraction = paise % 100
+  return fraction === 0 ? String(rupees) : `${rupees}.${String(fraction).padStart(2, '0')}`
+}

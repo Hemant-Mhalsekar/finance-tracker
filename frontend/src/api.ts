@@ -280,6 +280,21 @@ export type CycleReport = {
   daysSinceLastExpenseLogged: number | null
 }
 
+export function getCurrentCycle(): Promise<Cycle> {
+  return requestJson<Cycle>('/api/cycles/current')
+}
+
+export function changeCurrentSalary(salaryPaise: number): Promise<Cycle> {
+  return sendJson<Cycle>('/api/cycles/current/salary', 'PUT', { salaryPaise })
+}
+
+export type PayDaySettings = { payDay: number; pendingPayDay: number | null; pendingPayDayFrom: string | null }
+
+/** Takes effect after one full cycle. Sending the current pay day cancels a pending change. */
+export function changePayDay(payDay: number): Promise<PayDaySettings> {
+  return sendJson<PayDaySettings>('/api/settings/pay-day', 'PUT', { payDay })
+}
+
 export function getCurrentReport(): Promise<CycleReport> {
   return requestJson<CycleReport>('/api/cycles/current/report')
 }
@@ -291,8 +306,25 @@ export function getReportForDate(isoDate: string): Promise<CycleReport> {
 
 export type Category = { id: string; name: string; type: BudgetType | null; archived: boolean }
 
-export function listCategories(): Promise<Category[]> {
-  return requestJson<Category[]>('/api/categories')
+export function listCategories(includeArchived = false): Promise<Category[]> {
+  return requestJson<Category[]>(`/api/categories${includeArchived ? '?includeArchived=true' : ''}`)
+}
+
+export function createCategory(name: string, type: BudgetType): Promise<Category> {
+  return sendJson<Category>('/api/categories', 'POST', { name, type })
+}
+
+/** Only the fields given are changed. Other (type null) cannot be changed at all. */
+export function updateCategory(
+  id: string,
+  changes: { name?: string; type?: BudgetType; archived?: boolean },
+): Promise<Category> {
+  return sendJson<Category>(`/api/categories/${encodeURIComponent(id)}`, 'PATCH', changes)
+}
+
+/** Fails with 409 when the category still has expenses; archiving is the alternative. */
+export async function deleteCategory(id: string): Promise<void> {
+  await requestJson<null>(`/api/categories/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
 export type Expense = {
@@ -315,4 +347,32 @@ export type NewExpense = {
 
 export function createExpense(expense: NewExpense): Promise<Expense> {
   return sendJson<Expense>('/api/expenses', 'POST', expense)
+}
+
+export function updateExpense(id: string, expense: NewExpense): Promise<Expense> {
+  return sendJson<Expense>(`/api/expenses/${encodeURIComponent(id)}`, 'PUT', expense)
+}
+
+export async function deleteExpense(id: string): Promise<void> {
+  await requestJson<null>(`/api/expenses/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export type ExpensePage = {
+  items: Expense[]
+  page: number
+  size: number
+  totalItems: number
+  totalPages: number
+}
+
+export type ExpenseQuery = { from?: string; to?: string; categoryId?: string; page?: number; size?: number }
+
+/** Newest first. Pages start at 0; size is at most 100. */
+export function listExpenses(query: ExpenseQuery): Promise<ExpensePage> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== '') params.set(key, String(value))
+  }
+  const search = params.toString()
+  return requestJson<ExpensePage>(`/api/expenses${search ? `?${search}` : ''}`)
 }

@@ -95,20 +95,24 @@
 - Frontend: cd frontend && npm install && npm run dev (Vite proxies /api to localhost:8080)
 - zsh tip: quote URLs that contain ? in curl commands.
 
-## Frontend (current state, branch feature/frontend-core, 10 Nov 2026)
+## Frontend (current state; core merged in PR #10, branch feature/frontend-manage 11 Nov 2026)
 - Startup unchanged in spirit: waitForServer() polls /api/ping every 3 s up to 180 s (cold start is about 140 s), then refreshSession() exactly once (shared in-flight promise, never auto-retried because a lost response would trigger reuse detection), then getMe(). Access token only in a module variable in api.ts. apiFetch retries once after a 401 via refresh.
-- Routing: logged out -> AuthForm on any URL. payDay null -> everything redirects to /onboarding. Otherwise AppShell (top nav, logout) with / (Dashboard) and /add (AddExpense); unknown paths -> /.
-- api.ts: requestJson/sendJson throw ApiError(status, message from the API's {message}). Typed calls: getMe, onboard, getCurrentReport, getReportForDate, listCategories, createExpense.
+- Routing: logged out -> AuthForm on any URL. payDay null -> everything redirects to /onboarding. Otherwise AppShell (top nav, scrolls sideways on phones, logout) with / (Dashboard), /add, /expenses, /categories, /settings; unknown paths -> /.
+- api.ts: requestJson/sendJson throw ApiError(status, message from the API's {message}). Typed calls: getMe, onboard, getCurrentCycle, changeCurrentSalary, changePayDay, getCurrentReport, getReportForDate, listCategories(includeArchived), createCategory, updateCategory, deleteCategory, createExpense, updateExpense, deleteExpense, listExpenses.
 - money.ts: parseRupeesToPaise (string handling only, accepts commas and the rupee sign, max 2 decimals), formatPaise (en-IN grouping, 2 decimals, minus before the rupee sign), splitBudget (same floor rule as the backend). dates.ts: todayIst, addDays (UTC arithmetic), formatDate.
 - Onboarding: salary in rupees with a live 50/30/20 preview, pay day 1-31. A 409 just reloads the user.
-- AddExpense: mobile-first, amount autofocused, active categories only, type picker only for categories with null type, keeps category and date after saving.
+- components/ExpenseForm: shared by add and edit. Validates amount, category, type (only for null-type categories, never sent otherwise), description, date 2000..today. Add mode clears amount and description and keeps category and date.
+- AddExpense: mobile-first, amount autofocused, active categories only.
+- Expenses (/expenses): defaults to the current cycle (from = cycle start, to = today), filters from/to/category, 20 per page, inline edit (archived category allowed only if the expense is already in it), two-step delete. There is no GET /api/expenses/{id}; edits start from the list row.
+- Categories (/categories): grouped Needs/Wants/Investments, Other shown as built in, Archived section. Add (name + type), rename, retype, archive/restore, two-step delete; a 409 on delete keeps the confirm open with an "archive instead" hint.
+- Settings (/settings): salary for the current cycle onward (with split preview); pay-day change with the pending notice and a cancel button (sends the current pay day); reloads /api/me after a change.
 - Dashboard: current cycle report, Previous/Next cycle (report?date=), needs/wants cards with bar and overspend, savings with deficit, warnings (over salary, deficit, no expenses yet, last logged 3+ days ago), category table.
 - vercel.json: /api/* goes to Render; every other path rewrites to /index.html so deep links work.
 - No frontend test runner yet. Claude verifies builds, lint and a Playwright click-through against a mock API in its cloud workspace (npm works there; Maven does not).
-- Not built yet: expense list (edit/delete), categories management, settings (salary change, pay-day change with pending notice), weekly/yearly/savings reports, demo mode, README with screenshots.
+- Not built yet: weekly/yearly/savings reports, demo mode, README with screenshots, frontend tests in the repo.
 
 ## Roadmap and open items
-- Next: merge feature/frontend-core; then expense list, categories and settings screens; then weekly, yearly and savings overview reports.
+- Next: merge feature/frontend-manage; then weekly, yearly and savings overview reports.
 - Deferred: the "did your salary change?" prompt each cycle (needs a stored flag, so a new migration).
 - Before sharing the link: rate limiting on register/login (Bucket4j), cleanup job for expired refresh tokens, GitHub Actions CI (runners have Docker), a separate Supabase project for development, decide on cold-start fix (keep-alive ping, paid Render Starter about $7/month, or startup-time tuning), raise the frontend waiting limit above 140 s, Swagger/OpenAPI docs, account deletion, CSV export, README limitations (savings counts only logged expenses, no opening balance, no bonus income, India only, registration reveals emails).
 
