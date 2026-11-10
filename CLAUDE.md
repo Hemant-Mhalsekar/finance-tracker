@@ -13,7 +13,7 @@
 - Work in small steps. Read code before running it. NEVER run git commit or git push unless explicitly told. Never weaken or delete a failing test to make it pass: report the failure and its cause.
 - Never read, print, or log backend/.env or any secret. Never put real secrets, tokens, passwords or request bodies in code, logs, commits, or chat.
 - Do not add dependencies unless asked, and tell the owner which ones.
-- Do not edit a Flyway migration that has been applied (V1 to V3 are applied to the live database). Schema changes go in a new migration.
+- Do not edit a Flyway migration that has been applied (V1 to V3 are applied to the live database; V4 once the app has started with it). Schema changes go in a new migration.
 
 ## Tech and versions
 - Backend: Java 25 (Temurin; the shell must use JDK 25, not 27: export JAVA_HOME=$(/usr/libexec/java_home -v 25)), Spring Boot 4.1.2, Maven wrapper (./mvnw), Spring Framework 7, Spring Security 7, Hibernate 7, Jackson 3, Flyway 12, HikariCP, PostgreSQL 17 (Supabase), Tomcat 11. No Lombok.
@@ -43,10 +43,11 @@
 - Set them in backend/.env locally (gitignored) and in the Render dashboard. Add a variable on Render BEFORE pushing code that needs it (a missing JWT_SECRET once crashed a deploy).
 - application.yml also sets: ddl-auto validate, open-in-view false, Flyway on, server.port ${PORT:8080}, spring.jackson.deserialization.accept-float-as-int false.
 
-## Database (Flyway, all applied; Row Level Security is ENABLED with no policies on every table, the backend connects as the owner and is not blocked)
+## Database (Flyway; V1 to V3 applied to the live database, V4 written 10 Nov 2026 and applied on the next app start; Row Level Security is ENABLED with no policies on every table, the backend connects as the owner and is not blocked)
 - V1: app_meta(key, value).
 - V2: users(id uuid pk default gen_random_uuid(), email text, password_hash, pay_day smallint null 1..31, created_at); unique index on lower(email). refresh_tokens(id, user_id fk cascade, token_hash unique, expires_at, revoked, created_at).
 - V3: categories(id, user_id fk cascade, name 1..50, type text null in NEED/WANT/INVESTMENT where NULL means "user picks type per expense", archived, created_at; unique (user_id, lower(name)); unique (id, user_id)).
+  V4: users.pending_pay_day smallint null 1..31 and users.pending_pay_day_from date null (both null or both set; pending needs pay_day set). Applied to the cycle starting on or after pending_pay_day_from during roll-forward.
   cycles(id, user_id fk cascade, period_start, period_end, salary_paise bigint >0, needs_pct/wants_pct/savings_pct smallint default 50/30/20 summing to 100, needs_paise/wants_paise/savings_paise >=0 summing to salary_paise, unique (user_id, period_start)).
   expenses(id, user_id fk cascade, category_id, category_type NOT NULL (snapshot of the type when logged), amount_paise 1..10_000_000_000, expense_date date, description 1..200, created_at; composite FK (category_id, user_id) -> categories(id, user_id) with NO ACTION, so an expense can only use its owner's category; indexes on (user_id, expense_date) and category_id). There is deliberately no FK from expenses to cycles: the cycle is found by date range.
 
@@ -65,7 +66,7 @@
 - Public: GET /api/ping ("ok"), GET /api/health ({status, db, time}; 503 if DB down), POST /api/auth/register (201), /login (200), /refresh, /logout (204). Register/login/refresh return { accessToken } and set the refresh cookie.
 - Authenticated (Bearer access token): GET /api/me -> {id, email, payDay (null until onboarding)}; POST /api/onboarding {salaryPaise, payDay} -> 201 {payDay, cycle}; GET/POST /api/categories (?includeArchived), PATCH/DELETE /api/categories/{id}; POST /api/expenses, PUT/DELETE /api/expenses/{id}; GET /api/expenses ?from&to (ISO dates) &categoryId &page &size (default 20, max 100) -> {items, page, size, totalItems, totalPages}, sorted by date desc, createdAt desc, id desc.
 - CycleView = {periodStart, periodEnd, salaryPaise, needsPaise, wantsPaise, savingsPaise}. ExpenseView = {id, categoryId, type, amountPaise, expenseDate, description}. CategoryView = {id, name, type|null, archived}.
-- NOT BUILT YET (confirmed 10 Nov 2026: no CycleService, no settings package): GET /api/cycles/current (rolls forward: creates missing cycles up to today with INSERT ... ON CONFLICT DO NOTHING, copying salary and percentages, using the stored-cycles-first rule), PUT /api/cycles/current/salary (current cycle onward only), PUT /api/settings/pay-day (decided 10 Nov 2026: waits one FULL cycle, see Domain rules).
+- Cycles and settings (written 10 Nov 2026, uncommitted until tests pass): GET /api/cycles/current -> CycleView (rolls forward: creates missing cycles up to today with INSERT ... ON CONFLICT DO NOTHING under a SELECT ... FOR UPDATE lock on the user row, copying salary and percentages from the newest cycle, stored-cycles-first rule; 409 "Complete setup first" before onboarding). PUT /api/cycles/current/salary {salaryPaise} -> CycleView (current cycle only; later cycles copy it). PUT /api/settings/pay-day {payDay} -> {payDay, pendingPayDay, pendingPayDayFrom} (waits one full cycle; same as current pay day cancels; a new change replaces the pending one). GET /api/me now also returns pendingPayDay and pendingPayDayFrom.
 
 ## Security decisions (keep them)
 - Access token: HS256 JWT, 15 minutes, subject = user UUID, signed with JWT_SECRET (startup fails if missing or under 32 bytes). Stateless sessions, CSRF disabled (bearer tokens), BCrypt passwords (min 8 chars, max 72 bytes), email trimmed and lowercased.
@@ -82,6 +83,7 @@
 
 ## Tests (37 reported passing on 30 Oct 2026; the 9 integration tests live on the updates branch, commit 01ec401, not yet merged to main as of 10 Nov 2026)
 - Unit tests: CycleCalculatorTest (10, includes a property test over every pay day 1-31 for 4 years), BudgetSplitTest (3), DefaultCategoriesTest (1), JsonDeserializationTest (2, uses the real JSON config), CategoryServiceTest (6) and ExpenseServiceTest (6) with Mockito.
+- CycleIntegrationTest (5 methods, added 10 Nov 2026): roll-forward gap, concurrency, salary change, pay-day scheduling and application across edge pay days. Simulates time by replacing cycles via JDBC (real clock).
 - IntegrationTest (9 methods): real PostgreSQL 17 in a shared Testcontainers container, @SpringBootTest + MockMvc, covers auth, refresh rotation and reuse, onboarding races, cross-user isolation, composite FK, category and expense rules, cascade delete, and RLS-enabled on every table.
 - Run: cd backend && ./mvnw test (Docker Desktop must be running). Quick summary: ./mvnw test 2>&1 | grep -E "Tests run:|BUILD".
 - Mutation check idea (break the code on purpose, expect a failing test, restore with git checkout): only SecurityConfig permitAll was verified-planned; the type-snapshot and reuse-detection mutations were never run.
@@ -96,7 +98,7 @@
 - Not built yet: onboarding screen (salary in rupees, pay day), add-expense (mobile-first, under 10 seconds), dashboard (wide layout for desktop), expense list, categories management, settings, reports, router, demo mode with seeded fake data, polished README with screenshots.
 
 ## Roadmap and open items
-- Next: confirm/finish cycle roll-forward + salary change + pay-day change (above); then the cycle report (spent vs allocated per type, savings so far, category breakdown, overspend flags, "last expense logged X days ago"); then frontend screens; then weekly, yearly and savings overview reports.
+- Next: get the cycle work (above) passing, then the cycle report (spent vs allocated per type, savings so far, category breakdown, overspend flags, "last expense logged X days ago"); then frontend screens; then weekly, yearly and savings overview reports.
 - Deferred: the "did your salary change?" prompt each cycle (needs a stored flag, so a new migration).
 - Before sharing the link: rate limiting on register/login (Bucket4j), cleanup job for expired refresh tokens, GitHub Actions CI (runners have Docker), a separate Supabase project for development, decide on cold-start fix (keep-alive ping, paid Render Starter about $7/month, or startup-time tuning), raise the frontend waiting limit above 140 s, Swagger/OpenAPI docs, account deletion, CSV export, README limitations (savings counts only logged expenses, no opening balance, no bonus income, India only, registration reveals emails).
 

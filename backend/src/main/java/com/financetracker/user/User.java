@@ -1,5 +1,6 @@
 package com.financetracker.user;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -27,6 +28,14 @@ public class User {
     // SMALLINT in the database, so Short (not Integer) to pass schema validation.
     @Column(name = "pay_day")
     private Short payDay;
+
+    // A scheduled pay day change; both are null when nothing is pending.
+    @Column(name = "pending_pay_day")
+    private Short pendingPayDay;
+
+    // Start date of the first cycle that uses pendingPayDay.
+    @Column(name = "pending_pay_day_from")
+    private LocalDate pendingPayDayFrom;
 
     // Set by the database default (now()), so it is never written by the app.
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
@@ -57,7 +66,33 @@ public class User {
         return payDay;
     }
 
+    public Short getPendingPayDay() {
+        return pendingPayDay;
+    }
+
+    public LocalDate getPendingPayDayFrom() {
+        return pendingPayDayFrom;
+    }
+
     public OffsetDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    public void schedulePayDayChange(short newPayDay, LocalDate from) {
+        this.pendingPayDay = newPayDay;
+        this.pendingPayDayFrom = from;
+    }
+
+    public void clearPendingPayDay() {
+        this.pendingPayDay = null;
+        this.pendingPayDayFrom = null;
+    }
+
+    public void applyPendingPayDay() {
+        if (pendingPayDay == null) {
+            throw new IllegalStateException("No pending pay day to apply");
+        }
+        this.payDay = pendingPayDay;
+        clearPendingPayDay();
     }
 }
