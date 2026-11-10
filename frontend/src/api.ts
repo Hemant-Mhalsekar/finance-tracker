@@ -6,7 +6,8 @@ const AUTH_PATHS = ['/api/auth/login', '/api/auth/register', '/api/auth/refresh'
 
 const PING_INTERVAL_MS = 3_000
 const PING_TIMEOUT_MS = 10_000
-const PING_MAX_TOTAL_MS = 90_000
+// A Render free-tier cold start takes about 140 s, so give up only well after that.
+const PING_MAX_TOTAL_MS = 180_000
 
 // --- "logged out" notifications ---
 
@@ -184,13 +185,134 @@ export async function logout(): Promise<void> {
   }
 }
 
-export type Me = { id: string; email: string }
+// --- typed API calls ---
+// Response shapes are trusted as the backend's documented contract (see CLAUDE.md, API section).
 
-export async function getMe(): Promise<Me> {
-  const response = await apiFetch('/api/me')
-  const body = await readJson(response)
-  if (!response.ok || typeof body?.id !== 'string' || typeof body.email !== 'string') {
-    throw new Error('Something went wrong')
+export class ApiError extends Error {
+  readonly status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
   }
-  return { id: body.id, email: body.email }
+}
+
+async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  let response: Response
+  try {
+    response = await apiFetch(path, init)
+  } catch {
+    throw new ApiError(0, 'Could not reach the server')
+  }
+  const body: unknown = response.status === 204 ? null : await response.json().catch(() => null)
+  if (!response.ok) {
+    const message =
+      typeof body === 'object' && body !== null && typeof (body as { message?: unknown }).message === 'string'
+        ? (body as { message: string }).message
+        : 'Something went wrong'
+    throw new ApiError(response.status, message)
+  }
+  return body as T
+}
+
+function sendJson<T>(path: string, method: string, payload: unknown): Promise<T> {
+  return requestJson<T>(path, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export type BudgetType = 'NEED' | 'WANT' | 'INVESTMENT'
+
+export type Me = {
+  id: string
+  email: string
+  payDay: number | null
+  pendingPayDay: number | null
+  pendingPayDayFrom: string | null
+}
+
+export function getMe(): Promise<Me> {
+  return requestJson<Me>('/api/me')
+}
+
+export type Cycle = {
+  periodStart: string
+  periodEnd: string
+  salaryPaise: number
+  needsPaise: number
+  wantsPaise: number
+  savingsPaise: number
+}
+
+export function onboard(salaryPaise: number, payDay: number): Promise<{ payDay: number; cycle: Cycle }> {
+  return sendJson('/api/onboarding', 'POST', { salaryPaise, payDay })
+}
+
+export type BudgetLine = {
+  allocatedPaise: number
+  spentPaise: number
+  remainingPaise: number
+  overspent: boolean
+}
+
+export type CategorySpend = {
+  categoryId: string
+  name: string
+  archived: boolean
+  type: BudgetType
+  spentPaise: number
+  expenseCount: number
+}
+
+export type CycleReport = {
+  cycle: Cycle
+  days: { total: number; elapsed: number; remaining: number }
+  needs: BudgetLine
+  wants: BudgetLine
+  savings: { plannedPaise: number; savedPaise: number; investedPaise: number; deficit: boolean }
+  totalLoggedPaise: number
+  spendingExceedsSalary: boolean
+  expenseCount: number
+  categories: CategorySpend[]
+  lastExpenseLoggedOn: string | null
+  daysSinceLastExpenseLogged: number | null
+}
+
+export function getCurrentReport(): Promise<CycleReport> {
+  return requestJson<CycleReport>('/api/cycles/current/report')
+}
+
+/** Report for the stored cycle containing the date. Throws ApiError 404 if there is none. */
+export function getReportForDate(isoDate: string): Promise<CycleReport> {
+  return requestJson<CycleReport>(`/api/cycles/report?date=${encodeURIComponent(isoDate)}`)
+}
+
+export type Category = { id: string; name: string; type: BudgetType | null; archived: boolean }
+
+export function listCategories(): Promise<Category[]> {
+  return requestJson<Category[]>('/api/categories')
+}
+
+export type Expense = {
+  id: string
+  categoryId: string
+  type: BudgetType
+  amountPaise: number
+  expenseDate: string
+  description: string
+}
+
+export type NewExpense = {
+  amountPaise: number
+  categoryId: string
+  description: string
+  expenseDate: string
+  // Only for categories without a type (Other); the API rejects it otherwise.
+  type?: BudgetType
+}
+
+export function createExpense(expense: NewExpense): Promise<Expense> {
+  return sendJson<Expense>('/api/expenses', 'POST', expense)
 }

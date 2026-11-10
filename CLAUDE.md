@@ -19,7 +19,7 @@
 - Backend: Java 25 (Temurin; the shell must use JDK 25, not 27: export JAVA_HOME=$(/usr/libexec/java_home -v 25)), Spring Boot 4.1.2, Maven wrapper (./mvnw), Spring Framework 7, Spring Security 7, Hibernate 7, Jackson 3, Flyway 12, HikariCP, PostgreSQL 17 (Supabase), Tomcat 11. No Lombok.
 - Starters used: webmvc, data-jpa, flyway (+ flyway-database-postgresql), validation, security, security-oauth2-resource-server, actuator; postgres driver at runtime.
 - Tests: JUnit 5, Mockito, Spring Boot Testcontainers + testcontainers-postgresql (needs Docker Desktop running).
-- Frontend: Vite + React + TypeScript, plain CSS, Node 24. No router, no UI library yet.
+- Frontend: Vite + React + TypeScript, plain CSS, Node 24, react-router 8 (declarative mode: BrowserRouter/Routes, added 10 Nov 2026). No UI library.
 - Machine: MacBook Air, zsh. Docker Desktop 29.9.2 installed.
 
 ## Repo layout
@@ -67,7 +67,7 @@
 - Authenticated (Bearer access token): GET /api/me -> {id, email, payDay (null until onboarding)}; POST /api/onboarding {salaryPaise, payDay} -> 201 {payDay, cycle}; GET/POST /api/categories (?includeArchived), PATCH/DELETE /api/categories/{id}; POST /api/expenses, PUT/DELETE /api/expenses/{id}; GET /api/expenses ?from&to (ISO dates) &categoryId &page &size (default 20, max 100) -> {items, page, size, totalItems, totalPages}, sorted by date desc, createdAt desc, id desc.
 - CycleView = {periodStart, periodEnd, salaryPaise, needsPaise, wantsPaise, savingsPaise}. ExpenseView = {id, categoryId, type, amountPaise, expenseDate, description}. CategoryView = {id, name, type|null, archived}.
 - Cycles and settings (merged 10 Nov 2026, PR #8): GET /api/cycles/current -> CycleView (rolls forward: creates missing cycles up to today with INSERT ... ON CONFLICT DO NOTHING under a SELECT ... FOR UPDATE lock on the user row, copying salary and percentages from the newest cycle, stored-cycles-first rule; 409 "Complete setup first" before onboarding). PUT /api/cycles/current/salary {salaryPaise} -> CycleView (current cycle only; later cycles copy it). PUT /api/settings/pay-day {payDay} -> {payDay, pendingPayDay, pendingPayDayFrom} (waits one full cycle; same as current pay day cancels; a new change replaces the pending one). GET /api/me now also returns pendingPayDay and pendingPayDayFrom.
-- Cycle report (branch feature/cycle-report, 10 Nov 2026): GET /api/cycles/current/report and GET /api/cycles/report?date=YYYY-MM-DD (stored cycle containing the date, rolls forward first; 404 if none). CycleReport = {cycle, days{total, elapsed, remaining}, needs/wants{allocatedPaise, spentPaise, remainingPaise (negative = overspent), overspent}, savings{plannedPaise, savedPaise (salary - needs - wants spent; negative = deficit), investedPaise, deficit}, totalLoggedPaise (needs + wants + investments), spendingExceedsSalary, expenseCount, categories[{categoryId, name, archived, type, spentPaise, expenseCount}] sorted by amount desc (Other once per logged type), lastExpenseLoggedOn (latest created_at in IST, across all expenses), daysSinceLastExpenseLogged}. Totals come from one GROUP BY query, never from loading expenses.
+- Cycle report (merged 10 Nov 2026, PR #9): GET /api/cycles/current/report and GET /api/cycles/report?date=YYYY-MM-DD (stored cycle containing the date, rolls forward first; 404 if none). CycleReport = {cycle, days{total, elapsed, remaining}, needs/wants{allocatedPaise, spentPaise, remainingPaise (negative = overspent), overspent}, savings{plannedPaise, savedPaise (salary - needs - wants spent; negative = deficit), investedPaise, deficit}, totalLoggedPaise (needs + wants + investments), spendingExceedsSalary, expenseCount, categories[{categoryId, name, archived, type, spentPaise, expenseCount}] sorted by amount desc (Other once per logged type), lastExpenseLoggedOn (latest created_at in IST, across all expenses), daysSinceLastExpenseLogged}. Totals come from one GROUP BY query, never from loading expenses.
 
 ## Security decisions (keep them)
 - Access token: HS256 JWT, 15 minutes, subject = user UUID, signed with JWT_SECRET (startup fails if missing or under 32 bytes). Stateless sessions, CSRF disabled (bearer tokens), BCrypt passwords (min 8 chars, max 72 bytes), email trimmed and lowercased.
@@ -95,12 +95,20 @@
 - Frontend: cd frontend && npm install && npm run dev (Vite proxies /api to localhost:8080)
 - zsh tip: quote URLs that contain ? in curl commands.
 
-## Frontend (current state)
-- One page. api.ts keeps the access token in a module variable only (never in localStorage/sessionStorage or console logs). On load: waitForServer() polls /api/ping every 3 s up to 90 s (cold start), then refreshSession() exactly once (shared in-flight promise, never auto-retried because a lost response would trigger reuse detection), then getMe(). apiFetch retries once after a 401 via refresh. AuthForm toggles login/register. App shows waking message, error + Retry, form, or "Logged in as ...".
-- Not built yet: onboarding screen (salary in rupees, pay day), add-expense (mobile-first, under 10 seconds), dashboard (wide layout for desktop), expense list, categories management, settings, reports, router, demo mode with seeded fake data, polished README with screenshots.
+## Frontend (current state, branch feature/frontend-core, 10 Nov 2026)
+- Startup unchanged in spirit: waitForServer() polls /api/ping every 3 s up to 180 s (cold start is about 140 s), then refreshSession() exactly once (shared in-flight promise, never auto-retried because a lost response would trigger reuse detection), then getMe(). Access token only in a module variable in api.ts. apiFetch retries once after a 401 via refresh.
+- Routing: logged out -> AuthForm on any URL. payDay null -> everything redirects to /onboarding. Otherwise AppShell (top nav, logout) with / (Dashboard) and /add (AddExpense); unknown paths -> /.
+- api.ts: requestJson/sendJson throw ApiError(status, message from the API's {message}). Typed calls: getMe, onboard, getCurrentReport, getReportForDate, listCategories, createExpense.
+- money.ts: parseRupeesToPaise (string handling only, accepts commas and the rupee sign, max 2 decimals), formatPaise (en-IN grouping, 2 decimals, minus before the rupee sign), splitBudget (same floor rule as the backend). dates.ts: todayIst, addDays (UTC arithmetic), formatDate.
+- Onboarding: salary in rupees with a live 50/30/20 preview, pay day 1-31. A 409 just reloads the user.
+- AddExpense: mobile-first, amount autofocused, active categories only, type picker only for categories with null type, keeps category and date after saving.
+- Dashboard: current cycle report, Previous/Next cycle (report?date=), needs/wants cards with bar and overspend, savings with deficit, warnings (over salary, deficit, no expenses yet, last logged 3+ days ago), category table.
+- vercel.json: /api/* goes to Render; every other path rewrites to /index.html so deep links work.
+- No frontend test runner yet. Claude verifies builds, lint and a Playwright click-through against a mock API in its cloud workspace (npm works there; Maven does not).
+- Not built yet: expense list (edit/delete), categories management, settings (salary change, pay-day change with pending notice), weekly/yearly/savings reports, demo mode, README with screenshots.
 
 ## Roadmap and open items
-- Next: merge the cycle report; then frontend screens; then weekly, yearly and savings overview reports.
+- Next: merge feature/frontend-core; then expense list, categories and settings screens; then weekly, yearly and savings overview reports.
 - Deferred: the "did your salary change?" prompt each cycle (needs a stored flag, so a new migration).
 - Before sharing the link: rate limiting on register/login (Bucket4j), cleanup job for expired refresh tokens, GitHub Actions CI (runners have Docker), a separate Supabase project for development, decide on cold-start fix (keep-alive ping, paid Render Starter about $7/month, or startup-time tuning), raise the frontend waiting limit above 140 s, Swagger/OpenAPI docs, account deletion, CSV export, README limitations (savings counts only logged expenses, no opening balance, no bonus income, India only, registration reveals emails).
 
