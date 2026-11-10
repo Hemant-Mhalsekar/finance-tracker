@@ -4,8 +4,11 @@ import { getMe, logout, onLoggedOut, refreshSession, waitForServer, type Me } fr
 import AppShell from './AppShell'
 import AuthForm from './AuthForm'
 import AddExpense from './pages/AddExpense'
+import Categories from './pages/Categories'
 import Dashboard from './pages/Dashboard'
+import Expenses from './pages/Expenses'
 import Onboarding from './pages/Onboarding'
+import Settings from './pages/Settings'
 
 type Phase = 'waking' | 'serverError' | 'form' | 'ready'
 
@@ -112,6 +115,9 @@ export default function App() {
       <Route element={<AppShell email={me.email} onLogout={handleLogout} loggingOut={loggingOut} />}>
         <Route index element={<Dashboard />} />
         <Route path="add" element={<AddExpense />} />
+        <Route path="expenses" element={<Expenses />} />
+        <Route path="categories" element={<Categories />} />
+        <Route path="settings" element={<Settings me={me} onUserChanged={loadUser} />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
