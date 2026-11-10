@@ -55,3 +55,5 @@ cd backend
 - `GET /api/cycles/current` returns the pay cycle containing today, creating any missing cycles first.
 - `PUT /api/cycles/current/salary` changes the salary of the current cycle (later cycles copy it).
 - `PUT /api/settings/pay-day` schedules a pay day change. It waits one full cycle: the current and next cycle keep the old pay day.
+- `GET /api/cycles/current/report` returns spending against the plan for the current cycle: needs, wants, savings, investments, a per-category breakdown and overspend flags.
+- `GET /api/cycles/report?date=YYYY-MM-DD` returns the same report for the cycle containing that date.
